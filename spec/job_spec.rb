@@ -309,3 +309,85 @@ describe Delayed::Job do
   end
   
 end
+
+# Patch allows 
+#    'Time.is(Time.now) {} '
+#    or 'Time.is("10/05/2006") {}'
+#    or any other format
+class Time
+  def self.metaclass
+    class << self; self; end
+  end
+
+  def self.is(point_in_time)
+    new_time = case point_in_time
+      when String then Time.parse(point_in_time)
+      when Time then point_in_time
+      else raise ArgumentError.new("argument should be a string or time instance")
+    end
+    class << self
+      alias old_now now
+    end
+    metaclass.class_eval do
+      define_method :now do
+        new_time
+      end
+    end
+    yield
+    class << self
+      alias now old_now
+      undef old_now
+    end
+  end
+end
+
+describe Delayed::Job, "reoccuring tasks" do
+  
+  before(:each) do               
+    Delayed::Job.max_priority = nil
+    Delayed::Job.min_priority = nil      
+    
+    Delayed::Job.delete_all
+    @t0 = Time.now
+  end  
+  
+  it "should be put back in queue after it's done" do
+    Delayed::Job.create(:payload_object => SimpleJob.new, :priority => 0, :run_at => Time.now, :reoccur_in => 5.minutes.to_i)
+
+    lambda{
+      Delayed::Job.work_off(5)
+    }.should change{Delayed::Job.count}.by(0)
+  end
+  
+  it "should be put in queue on schedule" do
+    lambda{
+      Delayed::Job.schedule SimpleJob.new, :reoccur_in => 5.minutes
+    }.should change{Delayed::Job.count}.by(1)
+    Delayed::Job.find(:first).reoccur_in.should == "#{5*60}"
+  end
+
+  it "should be put in queue on schedule" do
+    lambda{
+      Delayed::Job.schedule SimpleJob.new, :every => 5.minutes
+    }.should change{Delayed::Job.count}.by(1)
+    Delayed::Job.find(:first).reoccur_in.should == "#{5*60}"
+  end
+  
+  it "should reschedule to the correct time" do    
+    Time.is(@t0) do
+      Delayed::Job.schedule SimpleJob.new, :reoccur_in => 5.minutes
+      lambda{
+        Delayed::Job.work_off(5)
+      }.should change {Delayed::Job.first.run_at}.by(5*60)
+    end
+  end
+  
+  it "should set last_run_at after it's done" do
+    Time.is(@t0) do
+      Delayed::Job.schedule(SimpleJob.new, :reoccur_in => 5.hours)
+      Delayed::Job.work_off(1)
+      Delayed::Job.first.run_at.should > @t0 + (5*60*60) - 1
+    end
+  end
+  
+end

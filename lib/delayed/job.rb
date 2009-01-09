@@ -88,6 +88,17 @@ module Delayed
       Job.create(:payload_object => object, :priority => priority.to_i, :run_at => run_at)
     end
 
+
+    # Schedule at reoccuring task
+    def self.schedule job, attributes = {}    
+      # default the attributes
+      attributes = {:payload_object => job, :priority => 0}.merge(attributes)
+      # convert reoccur_in to seconds in string format
+      [:every, :reoccur_in].each { |att| attributes[:reoccur_in] = attributes.delete(att).to_i.to_s if attributes[att]}
+      Job.create(attributes)
+    end
+
+
     def self.find_available(limit = 5, max_run_time = MAX_RUN_TIME)
 
       time_now = db_time_now
@@ -115,6 +126,16 @@ module Delayed
       records.sort_by { rand() }
     end
 
+    # Deletes the job or in the case of reoccuring tasks put the
+    # job back in the queue again.
+    def delete_or_reschedule
+      if reoccur_in.blank?
+        self.destroy
+      else
+        update_attributes :run_at => (Time.now + reoccur_in.to_i), :last_run_at => Time.now
+      end
+    end
+
     # Get the payload of the next job we can get an exclusive lock on.
     # If no jobs are left we return nil
     def self.reserve(max_run_time = MAX_RUN_TIME, &block)
@@ -127,7 +148,9 @@ module Delayed
           job.lock_exclusively!(max_run_time, worker_name)
           runtime =  Benchmark.realtime do
             invoke_job(job.payload_object, &block)
-            job.destroy
+            
+            # Patched to handle reoccuring tasks
+            job.delete_or_reschedule
           end
           logger.info "* [JOB] #{job.name} completed after %.4f" % runtime
 
