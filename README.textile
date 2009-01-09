@@ -2,7 +2,8 @@ h1. Delayed::Job
 
 Delated_job (or DJ) encapsulates the common pattern of asynchronously executing longer tasks in the background. 
 
-It is a direct extraction from Shopify where the job table is responsible for a multitude of core tasks. Amongst those tasks are:
+This is a patch of Shopify's Delayed::Job which also handles reoccuring tasks, thus removes the needs for crontasks.
+The original is a direct extraction from Shopify where the job table is responsible for a multitude of core tasks. Amongst those tasks are:
 
 * sending massive newsletters
 * image resizing
@@ -25,6 +26,8 @@ The library evolves around a delayed_jobs table which looks as follows:
     table.datetime :locked_at
     table.datetime :failed_at
     table.string   :locked_by
+    table.string   :reoccur_in
+    table.datetime :last_run_at
     table.timestamps
   end
   
@@ -50,7 +53,18 @@ There is also a second way to get jobs in the queue: send_later.
 This will simply create a Delayed::PerformableMethod job in the jobs table which serializes all the parameters you pass to it. There are some special smarts for active record objects
 which are stored as their text representation and loaded from the database fresh when the job is actually run later.
                                                                                                                               
-                                                                                                                    
+
+The original also has the possibility to do jobs at any given point.
+
+
+  Delayed::Job.enqueue NewsletterJob.new('lorem ipsum...', Customers.find(:all).collect(&:email)), 0,  4.weeks.from_now
+  
+
+I added the possibility to make the task reoccur:
+
+  Delayed::Job.schedule NewsletterJob.new('lorem ipsum...', Customers.find(:all).collect(&:email)), :every => 3.hours
+
+                                                                                                                  
 h2. Running the jobs
 
 You can invoke @rake jobs:work@ which will start working off jobs. You can cancel the rake task with @CTRL-C@. 
@@ -67,15 +81,3 @@ You can also run by writing a simple @script/job_runner@, and invoking it extern
 h3. Cleaning up
 
 You can invoke @rake jobs:clear@ to delete all jobs in the queue.
-
-h3. Changes
-
-* 1.7.0: Added failed_at column which can optionally be set after a certain amount of failed job attempts. By default failed job attempts are destroyed after about a month. 
-
-* 1.6.0: Renamed locked_until to locked_at. We now store when we start a given job instead of how long it will be locked by the worker. This allows us to get a reading on how long a job took to execute.                    
-
-* 1.5.0: Job runners can now be run in parallel. Two new database columns are needed: locked_until and locked_by. This allows us to use   pessimistic locking instead of relying on row level locks. This enables us to run as many worker processes as we need to speed up queue processing.
-
-* 1.2.0: Added #send_later to Object for simpler job creation
-
-* 1.0.0: Initial release
