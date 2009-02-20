@@ -29,6 +29,9 @@ module Delayed
     self.min_priority = nil
     self.max_priority = nil
 
+    # reoccuring_intervals
+    AllowedIntervals = %w{ first_of_month last_of_month first_of_year last_of_year }
+
     class LockError < StandardError
     end
 
@@ -93,8 +96,9 @@ module Delayed
     def self.schedule job, attributes = {}    
       # default the attributes
       attributes = {:payload_object => job, :priority => 0}.merge(attributes)
-      # convert reoccur_in to seconds in string format
-      [:every, :reoccur_in].each { |att| attributes[:reoccur_in] = attributes.delete(att).to_i.to_s if attributes[att]}
+      # convert reoccur_in to seconds in string format      
+      reoccur_in = attributes[:every] ? attributes.delete(:every) : attributes[:reoccur_in]
+      attributes[:reoccur_in] = AllowedIntervals.include?(reoccur_in.to_s) ? reoccur_in.to_s : reoccur_in.to_i.to_s          
       Job.create(attributes)
     end
 
@@ -128,11 +132,29 @@ module Delayed
 
     # Deletes the job or in the case of reoccuring tasks put the
     # job back in the queue again.
-    def delete_or_reschedule
+    def delete_or_reschedule(start_time = Time.now)
       if reoccur_in.blank?
         self.destroy
       else
-        update_attributes :run_at => (Time.now + reoccur_in.to_i), :last_run_at => Time.now
+        # If reoccuring set run_at to interval + starttime, i.e. start the job every 5 minutes.
+        # Unless the job isn't finished yet.
+        update_attributes :run_at => resolve_reoccur_time(start_time), :last_run_at => Time.now
+      end
+    end
+
+    def resolve_reoccur_time(start_time)
+      hour, min, sec = start_time.hour, start_time.min, start_time.sec
+      if reoccur_in == "last_of_month"  
+        # in the case where today is the last of month (most often)
+        if start_time.day == start_time.end_of_month.day
+          start_time += 1.month
+        end
+        start_time.end_of_month.beginning_of_day + (hour * 60 * 60 + min * 60 + sec)        
+      elsif reoccur_in == "first_of_month"
+        hour, min, sec = start_time.hour, start_time.min, start_time.sec
+        (start_time + 1.month).beginning_of_month.beginning_of_day + (hour * 60 * 60 + min * 60 + sec)        
+      else
+        start_time + reoccur_in.to_i
       end
     end
 
@@ -147,10 +169,13 @@ module Delayed
           logger.info "* [JOB] aquiring lock on #{job.name}"
           job.lock_exclusively!(max_run_time, worker_name)
           runtime =  Benchmark.realtime do
+            
+            # Get time before job starts
+            start_time = Time.now
             invoke_job(job.payload_object, &block)
             
             # Patched to handle reoccuring tasks
-            job.delete_or_reschedule
+            job.delete_or_reschedule start_time
           end
           logger.info "* [JOB] #{job.name} completed after %.4f" % runtime
 

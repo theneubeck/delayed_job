@@ -389,5 +389,78 @@ describe Delayed::Job, "reoccuring tasks" do
       Delayed::Job.first.run_at.should > @t0 + (5*60*60) - 1
     end
   end
+
+  context "every last_of_month and so on...." do
+    
+    it "should schedule reoccuring tasks" do
+      d = Delayed::Job.schedule(SimpleJob.new, :every => :last_of_month)
+      d.reoccur_in.should == "last_of_month"
+    end
+    
+    
+    context "last of month on last_of_month" do
+
+      it "should set end of month if middle of month" do
+        t0 = Date.new(2008, 02, 03).to_time + 10.hours
+        Time.is(t0) do
+          Delayed::Job.schedule(SimpleJob.new, :every => :last_of_month)
+          Delayed::Job.work_off(1)
+          Delayed::Job.first.run_at.should == (Date.new(2008,02,29).to_time + 10.hours)
+        end
+      end
+
+      it "should set last of month if first of month " do
+        t0 = Date.new(2008, 02, 01).to_time + 10.hours
+        Time.is(t0) do
+          Delayed::Job.schedule(SimpleJob.new, :every => :last_of_month)
+          Delayed::Job.work_off(1)
+          Delayed::Job.first.run_at.should == (Date.new(2008,02,29).to_time + 10.hours)
+        end
+      end
+
+      it "should set last of next month month if last of month " do
+        t0 = Date.new(2008, 03, 31).to_time + 10.hours
+        Time.is(t0) do
+          Delayed::Job.schedule(SimpleJob.new, :every => :last_of_month)
+          Delayed::Job.work_off(1)
+          Delayed::Job.first.run_at.should == (Date.new(2008,04,30).to_time + 10.hours)
+        end
+      end
+
+    end
+
+    context "first of month on first_of_month" do
+
+      it "should set run_at to first of next month on middle of month" do
+        t0 = Date.new(2008, 03, 12).to_time + 10.hours
+        Time.is(t0) do
+          Delayed::Job.schedule(SimpleJob.new, :every => :first_of_month)
+          Delayed::Job.work_off(1)
+          Delayed::Job.first.run_at.should == (Date.new(2008,04,01).to_time + 10.hours)
+        end
+      end
+
+      it "should set run_at to first of next month on first of month" do
+        t0 = Date.new(2008, 03, 01).to_time + 10.hours
+        Time.is(t0) do
+          Delayed::Job.schedule(SimpleJob.new, :every => :first_of_month)
+          Delayed::Job.work_off(1)
+          Delayed::Job.first.run_at.should == (Date.new(2008,04,01).to_time + 10.hours)
+        end
+      end
+
+      it "should set run_at to first of next month on last of month" do
+        t0 = Date.new(2008, 03, 31).to_time + 10.hours
+        Time.is(t0) do
+          Delayed::Job.schedule(SimpleJob.new, :every => :first_of_month)
+          Delayed::Job.work_off(1)
+          Delayed::Job.first.run_at.should == (Date.new(2008,04,01).to_time + 10.hours)
+        end
+      end
+
+    end
+    
+    
+  end
   
 end
