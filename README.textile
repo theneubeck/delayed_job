@@ -60,10 +60,16 @@ The original also has the possibility to do jobs at any given point.
   Delayed::Job.enqueue NewsletterJob.new('lorem ipsum...', Customers.find(:all).collect(&:email)), 0,  4.weeks.from_now
   
 
-I added the possibility to make the task reoccur:
+This patch added the possibility to make the task reoccur:
 
   Delayed::Job.schedule NewsletterJob.new('lorem ipsum...', Customers.find(:all).collect(&:email)), :every => 3.hours
 
+We also found the need for have reoccuring tasks every 1st and last of months, therefore you can do
+
+  Delayed::Job.schedule NewsletterJob.new('lorem ipsum...', Customers.find(:all).collect(&:email)), :every => :first_of_month
+  Delayed::Job.schedule NewsletterJob.new('lorem ipsum...', Customers.find(:all).collect(&:email)), :every => :last_of_month
+
+And the task will be rescheduled to the last of this/next month alt. the first of next month.
                                                                                                                   
 h2. Running the jobs
 
