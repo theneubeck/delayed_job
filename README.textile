@@ -17,6 +17,7 @@ h2. Setup
             
 The library evolves around a delayed_jobs table which looks as follows: 
 
+<pre><code>
   create_table :delayed_jobs, :force => true do |table|
     table.integer  :priority, :default => 0
     table.integer  :attempts, :default => 0
@@ -30,25 +31,28 @@ The library evolves around a delayed_jobs table which looks as follows:
     table.datetime :last_run_at
     table.timestamps
   end
-  
+</pre></code> 
+
 h2. Usage
 
 Jobs are simple ruby objects with a method called perform. Any object which responds to perform can be stuffed into the jobs table.
 Job objects are serialized to yaml so that they can later be resurrected by the job runner. 
 
+<pre><code>
   class NewsletterJob < Struct.new(:text, :emails)
     def perform
       emails.each { |e| NewsletterMailer.deliver_text_to_email(text, e) }
     end    
-  end  
+  end
   
   Delayed::Job.enqueue NewsletterJob.new('lorem ipsum...', Customers.find(:all).collect(&:email))
+</pre></code>
            
 There is also a second way to get jobs in the queue: send_later. 
 
-  
+<pre><code>  
   BatchImporter.new(Shop.find(1)).send_later(:import_massive_csv, massive_csv)                                                    
-  
+</pre></code>  
 
 This will simply create a Delayed::PerformableMethod job in the jobs table which serializes all the parameters you pass to it. There are some special smarts for active record objects
 which are stored as their text representation and loaded from the database fresh when the job is actually run later.
@@ -56,18 +60,22 @@ which are stored as their text representation and loaded from the database fresh
 
 The original also has the possibility to do jobs at any given point.
 
-
+<pre><code>
   Delayed::Job.enqueue NewsletterJob.new('lorem ipsum...', Customers.find(:all).collect(&:email)), 0,  4.weeks.from_now
-  
+</pre></code>  
 
 This patch added the possibility to make the task reoccur:
 
+<pre><code>
   Delayed::Job.schedule NewsletterJob.new('lorem ipsum...', Customers.find(:all).collect(&:email)), :every => 3.hours
+</pre></code>
 
 We also found the need for have reoccuring tasks every 1st and last of months, therefore you can do
 
+<pre><code>
   Delayed::Job.schedule NewsletterJob.new('lorem ipsum...', Customers.find(:all).collect(&:email)), :every => :first_of_month
   Delayed::Job.schedule NewsletterJob.new('lorem ipsum...', Customers.find(:all).collect(&:email)), :every => :last_of_month
+</pre></code>
 
 And the task will be rescheduled to the last of this/next month alt. the first of next month.
                                                                                                                   
